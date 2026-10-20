@@ -37,6 +37,13 @@ Abre http://localhost:5173. El API escucha en http://localhost:3001. Crea dos us
 
 Nunca subas los archivos `.env` a GitHub. Las credenciales de Postgres pertenecen únicamente al API.
 
+El API permite explícitamente `https://heychat-cliente-07u5oet.apps.unbroker.cloud`
+además del origen configurado en `CLIENT_ORIGIN`. La misma lista se aplica a
+CORS (con credenciales) y a la protección de origen de las mutaciones. Los demás
+orígenes se rechazan. Para producción configura `CLIENT_ORIGIN` con esa URL y
+`NODE_ENV=production`; si el API está en otro sitio, usa además
+`COOKIE_SAME_SITE=none` y HTTPS. Vuelve a desplegar el API tras actualizar el código.
+
 ## Funciones
 
 - Registro y sesión con nombre de usuario (3–24 letras, números o `_`) y contraseña (8–128 caracteres).

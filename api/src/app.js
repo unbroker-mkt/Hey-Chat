@@ -34,19 +34,31 @@ export function createApp(
     limits = true,
   } = {},
 ) {
+  const allowedOrigins = new Set([
+    origin.replace(/\/$/, ""),
+    "https://heychat-cliente-07u5oet.apps.unbroker.cloud",
+  ]);
   const app = express();
   if (process.env.TRUST_PROXY === "1") app.set("trust proxy", 1);
   app.use(
     helmet(),
-    cors({ origin, credentials: true }),
+    cors({
+      origin(requestOrigin, callback) {
+        if (!requestOrigin || allowedOrigins.has(requestOrigin)) {
+          return callback(null, true);
+        }
+        callback(fail(403, "Origen no permitido."));
+      },
+      credentials: true,
+    }),
     express.json({ limit: "16kb" }),
     cookieParser(),
   );
-  // Require the configured browser origin for cookie-authenticated mutations (CSRF protection).
+  // Use the same allowlist for CORS and cookie-authenticated mutations (CSRF).
   app.use((req, res, next) => {
     if (
       !["GET", "HEAD", "OPTIONS"].includes(req.method) &&
-      req.get("origin") !== origin
+      !allowedOrigins.has(req.get("origin"))
     )
       return next(fail(403, "Origen no permitido."));
     next();
