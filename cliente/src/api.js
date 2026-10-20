@@ -1,6 +1,6 @@
-const base = (
-  import.meta.env.VITE_API_URL || "http://localhost:3001/api"
-).replace(/\/$/, "");
+import { normalizeApiUrl } from "./api-url.js";
+
+const base = normalizeApiUrl(import.meta.env.VITE_API_URL);
 export async function api(path, options = {}) {
   let response;
   try {

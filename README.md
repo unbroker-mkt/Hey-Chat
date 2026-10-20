@@ -33,7 +33,7 @@ Abre http://localhost:5173. El API escucha en http://localhost:3001. Crea dos us
 | API     | `NODE_ENV`         | Usa `production` para activar cookies Secure (HTTPS).                                                                                                                                              |
 | API     | `COOKIE_SAME_SITE` | `lax` por defecto. Para dominios de sitios diferentes: `none` junto con HTTPS y `NODE_ENV=production`. Algunos navegadores bloquean cookies de terceros; se recomienda servir bajo el mismo sitio. |
 | API     | `TRUST_PROXY`      | `1` solamente si hay exactamente un proxy confiable delante del API.                                                                                                                               |
-| Cliente | `VITE_API_URL`     | URL completa del API, incluyendo `/api`, por ejemplo `https://api.example.com/api`. Se incorpora al compilar; no es un secreto.                                                                    |
+| Cliente | `VITE_API_URL`     | URL del API, por ejemplo `https://api.example.com` o `https://api.example.com/api`. El cliente agrega `/api` cuando falta. Se incorpora al compilar; no es un secreto.                                                                    |
 
 Nunca subas los archivos `.env` a GitHub. Las credenciales de Postgres pertenecen únicamente al API.
 
@@ -94,3 +94,17 @@ Sin `TEST_DATABASE_URL` se prueba el hashing y se omite explícitamente la prueb
 4. Define `CLIENT_ORIGIN` con el origen HTTPS del cliente y `NODE_ENV=production` en el API.
 
 El repositorio no aprovisiona servicios ni incluye credenciales. La aplicación ofrece chat de texto; no incluye recuperación de contraseña, adjuntos, cifrado de extremo a extremo ni confirmaciones de lectura. El límite de solicitudes está en memoria por proceso; para varias réplicas utiliza un almacén compartido.
+
+### Configuración del cliente desplegado
+
+En el servicio del cliente configura:
+
+```env
+VITE_API_URL=https://hey-chat-07u5oet.apps.unbroker.cloud
+```
+
+También se acepta la misma URL terminada en `/api`. La petición de sesión debe
+ir a `https://hey-chat-07u5oet.apps.unbroker.cloud/api/auth/me`.
+Las variables de Vite se incorporan durante la compilación: recompila y vuelve
+a desplegar el cliente después de cambiar la variable o actualizar este código.
+Un `401` en esa ruta sin sesión es normal; el cliente muestra el inicio de sesión.

@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "vite --host localhost",
     "build": "vite build",
-    "preview": "vite preview --host localhost"
+    "preview": "vite preview --host localhost",
+    "test": "node --test"
   },
   "dependencies": {
     "react": "^19.2.0",

@@ -8,7 +8,7 @@
   "scripts": {
     "dev": "concurrently -n API,CLIENTE -c magenta,cyan \"npm run dev -w api\" \"npm run dev -w cliente\"",
     "build": "npm run build -w cliente",
-    "test": "npm run test -w api",
+    "test": "npm run test -w api && npm run test -w cliente",
     "db:migrate": "npm run db:migrate -w api"
   },
   "devDependencies": {
