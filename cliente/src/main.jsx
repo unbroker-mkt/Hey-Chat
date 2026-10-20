@@ -20,6 +20,7 @@ import {
 } from "lucide-react";
 import { api, post } from "./api";
 import "./styles.css";
+import { ThemeProvider, ThemeToggle } from "./theme.jsx";
 
 const palette = ["purple", "pink", "mint", "orange", "blue"];
 function Avatar({ name, size = "", self = false }) {
@@ -75,7 +76,7 @@ function Auth({ onLogin }) {
   return (
     <main className="auth-page">
       <section className="auth-story">
-        <Brand />
+        <div className="auth-brand-row"><Brand /><ThemeToggle /></div>
         <div className="story-copy">
           <span className="eyebrow">
             <span className="little-dot" /> MENOS DISTANCIA, MÁS CONVERSACIONES
@@ -420,7 +421,7 @@ function Chat({ user, onLogout }) {
       <aside className={`sidebar ${selected ? "mobile-hidden" : ""}`}>
         <header className="sidebar-brand">
           <Brand />
-          <span className="mini-tag">¡HOLA!</span>
+          <ThemeToggle />
         </header>
         <div className="sidebar-heading">
           <div>
@@ -730,6 +731,7 @@ function Conversation({ conversation, user, onBack, onSent, onExpired }) {
         <span className="conversation-tag">
           <span className="dot green" /> Conversación directa
         </span>
+        <ThemeToggle />
       </header>
       <div
         className="message-scroll"
@@ -878,6 +880,7 @@ function App() {
     return (
       <div className="boot">
         <Brand />
+        <ThemeToggle />
         <Spinner />
         <p>Preparando tu espacio…</p>
       </div>
@@ -886,6 +889,7 @@ function App() {
     return (
       <div className="boot">
         <Brand />
+        <ThemeToggle />
         <p role="alert">{error}</p>
         <button className="primary" onClick={load}>
           Volver a intentar
@@ -898,4 +902,4 @@ function App() {
     <Auth onLogin={setUser} />
   );
 }
-createRoot(document.getElementById("root")).render(<App />);
+createRoot(document.getElementById("root")).render(<ThemeProvider><App /></ThemeProvider>);

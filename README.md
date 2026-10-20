@@ -53,6 +53,7 @@ orígenes se rechazan. Para producción configura `CLIENT_ORIGIN` con esa URL y
 - Agregar contactos por nombre exacto y buscar en tu lista. Agregar un contacto no agrega automáticamente al remitente en la agenda del destinatario.
 - Conversaciones directas únicas por pareja; ambos participantes ven la conversación y pueden responder.
 - Historial persistente, mensajes de hasta 4.000 caracteres y paginación de 100 mensajes.
+- Modo claro y oscuro con botón en el acceso y el chat. Recuerda la elección en este navegador y usa el tema del sistema la primera vez.
 - Diseño adaptable a móvil, teclado, estados vacíos, errores de conexión y formularios accesibles.
 
 ## API
