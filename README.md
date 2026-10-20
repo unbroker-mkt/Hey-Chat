@@ -33,7 +33,7 @@ Abre http://localhost:5173. El API escucha en http://localhost:3001. Crea dos us
 | API     | `NODE_ENV`         | Usa `production` para activar cookies Secure (HTTPS).                                                                                                                                              |
 | API     | `COOKIE_SAME_SITE` | `lax` por defecto. Para dominios de sitios diferentes: `none` junto con HTTPS y `NODE_ENV=production`. Algunos navegadores bloquean cookies de terceros; se recomienda servir bajo el mismo sitio. |
 | API     | `TRUST_PROXY`      | `1` solamente si hay exactamente un proxy confiable delante del API.                                                                                                                               |
-| Cliente | `VITE_API_URL`     | URL del API, por ejemplo `https://api.example.com` o `https://api.example.com/api`. El cliente agrega `/api` cuando falta. Se incorpora al compilar; no es un secreto.                                                                    |
+| Cliente | `VITE_API_URL`     | URL del API, por ejemplo `https://api.example.com` o `https://api.example.com/api`. El cliente agrega `/api` cuando falta. Se incorpora al compilar; no es un secreto.                             |
 
 Nunca subas los archivos `.env` a GitHub. Las credenciales de Postgres pertenecen únicamente al API.
 
@@ -94,7 +94,7 @@ Sin `TEST_DATABASE_URL` se prueba el hashing y se omite explícitamente la prueb
 3. Define `VITE_API_URL`, ejecuta `npm run build` y sirve `cliente/dist` por HTTPS.
 4. Define `CLIENT_ORIGIN` con el origen HTTPS del cliente y `NODE_ENV=production` en el API.
 
-El repositorio no aprovisiona servicios ni incluye credenciales. La aplicación ofrece chat de texto; no incluye recuperación de contraseña, adjuntos, cifrado de extremo a extremo ni confirmaciones de lectura. El límite de solicitudes está en memoria por proceso; para varias réplicas utiliza un almacén compartido.
+El repositorio no aprovisiona servicios ni incluye credenciales. La aplicación ofrece chat de texto y adjuntos privados; no incluye recuperación de contraseña, cifrado de extremo a extremo ni confirmaciones de lectura. El límite de solicitudes está en memoria por proceso; para varias réplicas utiliza un almacén compartido.
 
 ### Configuración del cliente desplegado
 
@@ -124,3 +124,54 @@ Un `401` en esa ruta sin sesión es normal; el cliente muestra el inicio de sesi
   `TRUST_PROXY=1` en el servicio del API. No uses `trust proxy=true`: permitiría
   confiar en direcciones aportadas por el cliente. Si la infraestructura usa
   varios saltos, confirma la topología antes de cambiar esta configuración.
+
+## Archivos e imágenes en R2
+
+Configura estos secretos en **el servicio del API**, nunca en Vite:
+
+```env
+R2_ENDPOINT=https://<ACCOUNT_ID>.r2.cloudflarestorage.com
+R2_BUCKET=<nombre-del-bucket>
+R2_ACCESS_KEY_ID=<access-key-id>
+R2_SECRET_ACCESS_KEY=<secret-access-key>
+```
+
+Para desarrollo se lee también `.env.r2` en la raíz del repositorio. Ese archivo
+está excluido de Git. En producción configura las variables en el panel del
+servicio: el archivo local no se publica. El token necesita lectura y escritura
+sobre el bucket (incluida eliminación para limpiar subidas que no se guardaron).
+Mantén el bucket privado.
+
+Los archivos se suben mediante el API y las descargas pasan por el API después
+de comprobar la sesión y la pertenencia al chat. No se usan URLs públicas ni
+se exponen las claves de R2. Este flujo no necesita CORS en el bucket; sí conserva
+el CORS del API. El proxy debe permitir cuerpos multipart de al menos 21 MB y
+el tiempo suficiente para la subida; el cliente espera hasta 120 segundos.
+
+- Botón de clip, un archivo por mensaje, texto opcional, vista previa y progreso.
+- Máximo de entrada: 20 MiB por archivo; JPG, PNG y WebP estáticos, PDF, DOCX,
+  XLSX, PPTX, TXT y CSV. Los documentos de texto deben usar UTF-8.
+- Antes de enviar, el navegador reduce las imágenes hasta 1920 px en su lado
+  mayor y las codifica como WebP al 80 % de calidad cuando beneficia el tamaño.
+- El servidor comprueba el contenido, limita las imágenes a 40 megapíxeles,
+  vuelve a codificarlas en WebP, corrige la orientación y elimina metadatos.
+  Las imágenes aparecen en el chat; los documentos tienen nombre, tamaño y descarga.
+- Se conserva la versión optimizada de la imagen, no el original de alta resolución.
+- Las solicitudes de subida usan un UUID para evitar mensajes duplicados al reintentar.
+- R2 almacena los bytes; Postgres guarda metadatos y la clave privada del objeto.
+  Si falla la escritura en Postgres, se intenta eliminar el objeto subido.
+- Se validan formatos, pero no se incluye un servicio antivirus de documentos.
+
+| Método | Ruta                                 | Uso                                                                                                         |
+| ------ | ------------------------------------ | ----------------------------------------------------------------------------------------------------------- |
+| POST   | `/api/conversations/:id/attachments` | `multipart/form-data`: `file`, `body` opcional y `requestId` UUID. Devuelve `{ message }` con `attachment`. |
+| GET    | `/api/attachments/:id`               | Devuelve los bytes a los participantes, con cookie de sesión y sin caché.                                   |
+
+No uses el helper JSON del cliente para enviar multipart: debe dejar que el
+navegador establezca el boundary. Las imágenes recibidas se obtienen con
+`credentials: include` y se muestran mediante URLs blob locales.
+
+Despliega primero el API (crea automáticamente las columnas e índices nuevos)
+y después el cliente. Prueba el envío con dos cuentas y confirma que una tercera
+no puede acceder. `TEST_DATABASE_URL=... npm test` cubre compresión, rechazo de
+formatos, límites, autorización, historial, reintentos y fallos de almacenamiento.

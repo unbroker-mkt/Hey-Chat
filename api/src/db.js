@@ -35,6 +35,11 @@ export async function migrate(pool) {
       sender_id uuid NOT NULL REFERENCES users(id), body varchar(4000) NOT NULL,
       created_at timestamptz NOT NULL DEFAULT now()
     );
+    ALTER TABLE messages ADD COLUMN IF NOT EXISTS attachment jsonb;
+    ALTER TABLE messages ADD COLUMN IF NOT EXISTS attachment_key text;
+    ALTER TABLE messages ADD COLUMN IF NOT EXISTS client_request_id uuid;
+    CREATE UNIQUE INDEX IF NOT EXISTS messages_client_request ON messages(sender_id,client_request_id);
+    CREATE UNIQUE INDEX IF NOT EXISTS messages_attachment_id ON messages((attachment->>'id')) WHERE attachment IS NOT NULL;
     CREATE INDEX IF NOT EXISTS messages_conversation_id ON messages(conversation_id, id DESC);
   `);
     await client.query("COMMIT");

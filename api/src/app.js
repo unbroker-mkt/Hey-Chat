@@ -1,4 +1,6 @@
 import express from "express";
+import { attachmentRoutes } from "./attachments.js";
+import { storage as r2Storage } from "./storage.js";
 import cors from "cors";
 import helmet from "helmet";
 import cookieParser from "cookie-parser";
@@ -32,6 +34,7 @@ export function createApp(
     origin = process.env.CLIENT_ORIGIN || "http://localhost:5173",
     production = process.env.NODE_ENV === "production",
     limits = true,
+    storage = r2Storage,
   } = {},
 ) {
   const allowedOrigins = new Set([
@@ -189,9 +192,9 @@ export function createApp(
   app.get("/api/conversations", protect, async (req, res) => {
     const { rows } = await pool.query(
       `SELECT c.id, json_build_object('id',u.id,'username',u.username) AS contact,
-      m.body AS last_message, COALESCE(m.created_at,c.created_at) AS updated_at
+      COALESCE(NULLIF(m.body,''), m.attachment->>'name') AS last_message, COALESCE(m.created_at,c.created_at) AS updated_at
       FROM conversations c JOIN users u ON u.id=CASE WHEN c.user_a=$1 THEN c.user_b ELSE c.user_a END
-      LEFT JOIN LATERAL (SELECT body,created_at FROM messages WHERE conversation_id=c.id ORDER BY id DESC LIMIT 1) m ON true
+      LEFT JOIN LATERAL (SELECT body,created_at,attachment FROM messages WHERE conversation_id=c.id ORDER BY id DESC LIMIT 1) m ON true
       WHERE c.user_a=$1 OR c.user_b=$1 ORDER BY updated_at DESC`,
       [req.user.id],
     );
@@ -221,7 +224,7 @@ export function createApp(
       const after = cursor.parse(req.query.after);
       if (before && after) throw fail(400, "Usa before o after, no ambos.");
       const { rows } = await pool.query(
-        `SELECT id::text,id AS sort_id,sender_id,body,created_at FROM messages WHERE conversation_id=$1 ${before ? "AND id<$2" : after ? "AND id>$2" : ""} ORDER BY messages.id ${after ? "ASC" : "DESC"} LIMIT 100`,
+        `SELECT id::text,id AS sort_id,sender_id,body,created_at,attachment FROM messages WHERE conversation_id=$1 ${before ? "AND id<$2" : after ? "AND id>$2" : ""} ORDER BY messages.id ${after ? "ASC" : "DESC"} LIMIT 100`,
         before || after ? [req.params.id, before || after] : [req.params.id],
       );
       if (!after) rows.reverse();
@@ -249,6 +252,7 @@ export function createApp(
       res.status(201).json({ message: rows[0] });
     },
   );
+  attachmentRoutes(app, { pool, protect, membership, storage });
   app.use((req, res) => res.status(404).json({ error: "Ruta no encontrada." }));
   app.use((err, req, res, next) => {
     if (err instanceof z.ZodError)
@@ -258,12 +262,9 @@ export function createApp(
         .status(409)
         .json({ error: "Este nombre de usuario ya está en uso." });
     if (err.status)
-      return res
-        .status(err.status)
-        .json({
-          error:
-            err.status === 413 ? "Solicitud demasiado grande." : err.message,
-        });
+      return res.status(err.status).json({
+        error: err.status === 413 ? "Solicitud demasiado grande." : err.message,
+      });
     console.error("API error:", err.code || err.name);
     res.status(500).json({ error: "Ocurrió un problema. Intenta de nuevo." });
   });

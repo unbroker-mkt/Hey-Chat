@@ -2,6 +2,8 @@ import React, { useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import {
   MessageCircle,
+  Paperclip,
+  FileText,
   Plus,
   Search,
   Send,
@@ -18,8 +20,10 @@ import {
   Check,
   LoaderCircle,
 } from "lucide-react";
-import { api, post } from "./api";
+import { api, post, uploadFile } from "./api";
 import "./styles.css";
+import { Attachment } from "./Attachment.jsx";
+import { optimizeFile, formatSize, FILE_ACCEPT } from "./files.js";
 import { ThemeProvider, ThemeToggle } from "./theme.jsx";
 
 const palette = ["purple", "pink", "mint", "orange", "blue"];
@@ -76,7 +80,10 @@ function Auth({ onLogin }) {
   return (
     <main className="auth-page">
       <section className="auth-story">
-        <div className="auth-brand-row"><Brand /><ThemeToggle /></div>
+        <div className="auth-brand-row">
+          <Brand />
+          <ThemeToggle />
+        </div>
         <div className="story-copy">
           <span className="eyebrow">
             <span className="little-dot" /> MENOS DISTANCIA, MÁS CONVERSACIONES
@@ -620,7 +627,52 @@ function Conversation({ conversation, user, onBack, onSent, onExpired }) {
     [sending, setSending] = useState(false),
     [loading, setLoading] = useState(true),
     [more, setMore] = useState(false),
-    [olderBusy, setOlderBusy] = useState(false);
+    [olderBusy, setOlderBusy] = useState(false),
+    [selectedFile, setSelectedFile] = useState(null),
+    [preparing, setPreparing] = useState(false),
+    [progress, setProgress] = useState(0),
+    [previewUrl, setPreviewUrl] = useState(null);
+  const fileInput = useRef(null),
+    uploadController = useRef(null),
+    selectionVersion = useRef(0);
+  useEffect(() => {
+    if (!selectedFile?.file.type.startsWith("image/")) {
+      setPreviewUrl(null);
+      return;
+    }
+    const url = URL.createObjectURL(selectedFile.file);
+    setPreviewUrl(url);
+    return () => URL.revokeObjectURL(url);
+  }, [selectedFile]);
+  useEffect(
+    () => () => {
+      selectionVersion.current++;
+      uploadController.current?.abort();
+    },
+    [],
+  );
+  async function selectFile(event) {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+    const version = ++selectionVersion.current;
+    setPreparing(true);
+    setError("");
+    setSelectedFile(null);
+    try {
+      const optimized = await optimizeFile(file);
+      if (version === selectionVersion.current)
+        setSelectedFile({
+          file: optimized,
+          originalSize: file.size,
+          requestId: crypto.randomUUID(),
+        });
+    } catch (e) {
+      if (version === selectionVersion.current) setError(e.message);
+    } finally {
+      if (version === selectionVersion.current) setPreparing(false);
+    }
+  }
   const last = useRef(null),
     initialized = useRef(false),
     bottom = useRef(null),
@@ -653,7 +705,6 @@ function Conversation({ conversation, user, onBack, onSent, onExpired }) {
           }
           if (data.messages.length) last.current = data.messages.at(-1).id;
           setLoading(false);
-          setError("");
         }
       } catch (e) {
         if (active) {
@@ -697,15 +748,29 @@ function Conversation({ conversation, user, onBack, onSent, onExpired }) {
   async function send(e) {
     e.preventDefault();
     const body = text.trim();
-    if (!body || sending) return;
+    if ((!body && !selectedFile) || sending || preparing) return;
     setSending(true);
     setError("");
     try {
-      const { message } = await post(endpoint, { body });
+      setProgress(0);
+      uploadController.current = new AbortController();
+      const { message } = selectedFile
+        ? await uploadFile(
+            `/conversations/${conversation.id}/attachments`,
+            selectedFile.file,
+            body,
+            selectedFile.requestId,
+            (value) => {
+              if (mounted.current) setProgress(value);
+            },
+            uploadController.current.signal,
+          )
+        : await post(endpoint, { body });
       if (!mounted.current) return;
       nearBottom.current = true;
       merge([message]);
       setText("");
+      setSelectedFile(null);
       onSent().catch(() => {});
     } catch (e) {
       if (mounted.current) setError(e.message);
@@ -789,7 +854,16 @@ function Conversation({ conversation, user, onBack, onSent, onExpired }) {
                     <Avatar name={conversation.contact.username} size="tiny" />
                   )}
                   <div className="message-bubble">
-                    <p>{m.body}</p>
+                    {m.attachment && (
+                      <Attachment
+                        attachment={m.attachment}
+                        onImageLoad={() => {
+                          if (nearBottom.current)
+                            bottom.current?.scrollIntoView({ block: "end" });
+                        }}
+                      />
+                    )}
+                    {m.body && <p>{m.body}</p>}
                     <time>
                       {new Date(m.created_at).toLocaleTimeString("es", {
                         hour: "2-digit",
@@ -811,7 +885,66 @@ function Conversation({ conversation, user, onBack, onSent, onExpired }) {
         </p>
       )}
       <form className="composer" onSubmit={send}>
+        <input
+          ref={fileInput}
+          type="file"
+          accept={FILE_ACCEPT}
+          onChange={selectFile}
+          hidden
+          aria-label="Seleccionar archivo"
+        />
+        {preparing && (
+          <div className="file-status" role="status">
+            <Spinner /> Optimizando imagen…
+          </div>
+        )}
+        {selectedFile && (
+          <div className="file-preview">
+            {previewUrl ? (
+              <img src={previewUrl} alt="Imagen lista para enviar" />
+            ) : (
+              <FileText size={28} />
+            )}
+            <div>
+              <strong>{selectedFile.file.name}</strong>
+              <small>
+                {formatSize(selectedFile.file.size)}
+                {selectedFile.originalSize > selectedFile.file.size &&
+                  ` · ${Math.round((1 - selectedFile.file.size / selectedFile.originalSize) * 100)}% menos peso`}
+              </small>
+            </div>
+            <button
+              className="icon-button"
+              type="button"
+              aria-label="Quitar archivo"
+              disabled={sending}
+              onClick={() => setSelectedFile(null)}
+            >
+              <X size={18} />
+            </button>
+          </div>
+        )}
+        {sending && selectedFile && (
+          <div className="file-status" role="status">
+            <progress
+              value={progress}
+              max="100"
+              aria-label="Progreso de subida"
+            />
+            {progress < 100 ? `Subiendo ${progress}%` : "Guardando archivo…"}
+          </div>
+        )}
         <div className="composer-input">
+          <button
+            type="button"
+            className="icon-button"
+            aria-label="Adjuntar imagen o documento"
+            title="Adjuntar imagen o documento · hasta 20 MB"
+            disabled={sending || preparing}
+            onClick={() => fileInput.current?.click()}
+          >
+            <Paperclip size={21} />
+          </button>
           <button
             type="button"
             className="icon-button emoji-button"
@@ -843,7 +976,7 @@ function Conversation({ conversation, user, onBack, onSent, onExpired }) {
           />
           <button
             className="send-button"
-            disabled={sending || !text.trim()}
+            disabled={sending || preparing || (!text.trim() && !selectedFile)}
             aria-label="Enviar mensaje"
           >
             {sending ? <Spinner /> : <Send size={20} />}
@@ -902,4 +1035,8 @@ function App() {
     <Auth onLogin={setUser} />
   );
 }
-createRoot(document.getElementById("root")).render(<ThemeProvider><App /></ThemeProvider>);
+createRoot(document.getElementById("root")).render(
+  <ThemeProvider>
+    <App />
+  </ThemeProvider>,
+);
