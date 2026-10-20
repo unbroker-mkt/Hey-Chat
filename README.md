@@ -89,7 +89,7 @@ Sin `TEST_DATABASE_URL` se prueba el hashing y se omite explícitamente la prueb
 ## Producción
 
 1. Provisiona Postgres y define las variables del API.
-2. Ejecuta `npm ci` y `npm run db:migrate` antes de iniciar `npm start -w api`.
+2. Ejecuta `npm ci` e inicia `npm start -w api`. El API crea las tablas faltantes antes de aceptar solicitudes. `npm run db:migrate` también permite hacerlo manualmente.
 3. Define `VITE_API_URL`, ejecuta `npm run build` y sirve `cliente/dist` por HTTPS.
 4. Define `CLIENT_ORIGIN` con el origen HTTPS del cliente y `NODE_ENV=production` en el API.
 
@@ -108,3 +108,18 @@ ir a `https://hey-chat-07u5oet.apps.unbroker.cloud/api/auth/me`.
 Las variables de Vite se incorporan durante la compilación: recompila y vuelve
 a desplegar el cliente después de cambiar la variable o actualizar este código.
 Un `401` en esa ruta sin sesión es normal; el cliente muestra el inicio de sesión.
+
+### Errores de despliegue
+
+- `42P01` significa que Postgres no encuentra una tabla. El arranque ahora ejecuta
+  la inicialización del esquema en una transacción antes de escuchar peticiones.
+  Usa un bloqueo de Postgres para coordinar varias réplicas; no borra datos ni
+  recrea tablas existentes. El usuario de `DATABASE_URL` necesita permisos para
+  crear las tablas e índices. Si falla, el proceso termina en lugar de aceptar
+  registros que devolverían 500.
+- `ERR_ERL_UNEXPECTED_X_FORWARDED_FOR` significa que hay un proxy enviando
+  `X-Forwarded-For` y Express no está configurado para confiar en él. Si el API
+  recibe tráfico exclusivamente a través de un proxy confiable, configura
+  `TRUST_PROXY=1` en el servicio del API. No uses `trust proxy=true`: permitiría
+  confiar en direcciones aportadas por el cliente. Si la infraestructura usa
+  varios saltos, confirma la topología antes de cambiar esta configuración.

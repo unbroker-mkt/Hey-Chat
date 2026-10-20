@@ -15,7 +15,7 @@ test(
   { skip: !process.env.TEST_DATABASE_URL },
   async () => {
     const pool = createPool(process.env.TEST_DATABASE_URL);
-    await migrate(pool);
+    await Promise.all([migrate(pool), migrate(pool)]);
     const server = createApp(pool, {
       origin: "http://localhost:5173",
       limits: false,

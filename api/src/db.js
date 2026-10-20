@@ -5,7 +5,12 @@ export function createPool(connectionString = process.env.DATABASE_URL) {
   return new pg.Pool({ connectionString });
 }
 export async function migrate(pool) {
-  await pool.query(`
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    // Serialize schema setup when multiple API replicas start together.
+    await client.query("SELECT pg_advisory_xact_lock(724901, 1)");
+    await client.query(`
     CREATE TABLE IF NOT EXISTS users (
       id uuid PRIMARY KEY, username varchar(24) UNIQUE NOT NULL,
       password_hash text NOT NULL, created_at timestamptz NOT NULL DEFAULT now()
@@ -32,4 +37,11 @@ export async function migrate(pool) {
     );
     CREATE INDEX IF NOT EXISTS messages_conversation_id ON messages(conversation_id, id DESC);
   `);
+    await client.query("COMMIT");
+  } catch (error) {
+    await client.query("ROLLBACK");
+    throw error;
+  } finally {
+    client.release();
+  }
 }
